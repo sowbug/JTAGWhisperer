@@ -1,4 +1,6 @@
-The JTAG Whisperer
+The JTAG Whisperer <https://github.com/sowbug/JTAGWhisperer/>
 
-By Mike Tsao
-www.sowbug.com
+By Mike Tsao <http://www.sowbug.com/>
+
+Many thanks to https://github.com/ben0109/XSVF-Player/, who adapted the
+Xilinx XAPP058 code into something comprehensible.

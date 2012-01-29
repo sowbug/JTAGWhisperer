@@ -1,0 +1,24 @@
+07 20 ...................... XREPEAT, 0x20 times
+12 00 ...................... XSTATE Test-Logic-Reset
+12 01 ...................... XSTATE Run-Test/Idle
+04 00 00 00 00 ............. XRUNTEST
+02 08 fe ................... XSIR, 8 bits, value 0xfe
+08 00 00 00 20 ............. XSDRSIZE 32 bits
+01 0f ff ff ff ............. XTDOMASK
+09 00 00 00 00 f9 60 40 93 . XSDRTDO, TDI 00000000 TDO f9604093
+02 08 ff ................... XSIR, 8 bits, value 0xff
+02 08 fe ................... XSIR, 8 bits, value 0xfe
+09 00 00 00 00 f9 60 40 93 : XSDRTDO, TDI 00000000 TDO f9604093
+02 08 ff ................... XSIR, 8 bits, value 0xff
+02 08 fe ................... XSIR, 8 bits, value 0xfe
+09 00 00 00 00 f9 60 40 93 . XSDRTDO, TDI 00000000 TDO f9604093
+07 00 ...................... XREPEAT, 0 times
+07 20 ...................... XREPEAT, 0x20 times
+12 00 ...................... XSTATE Test-Logic-Reset
+12 01 ...................... XSTATE Run-Test/Idle
+04 00 00 00 00 ............. XRUNTEST
+02 08 ff ................... XSIR, 8 bits, value 0xff
+08 00 00 00 01 ............. XSDRSIZE 1 bit
+01 00 ...................... TDOMASK 0
+09 00 00 ................... XSDRTDO, TDI 0, TDO 0
+00 ......................... XCOMPLETE
