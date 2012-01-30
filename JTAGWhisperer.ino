@@ -2,12 +2,6 @@
 #include <stdio.h>
 
 #define BYTE_COUNT(bit_count) ((int)((bit_count + 7) >> 3))
-#define SDR_BEGIN 0x01
-#define SDR_END   0x02
-#define SDR_CHECK 0x10
-#define SDR_NOCHECK 0
-#define SDR_CONTINUE 0
-#define SDR_FULL 3
 
 void p(const char *fmt, ... ) {
   char tmp[128];
@@ -39,14 +33,10 @@ void p(const char *fmt, ... ) {
   }
 #endif
 
-void print_byte(uint8_t c) {
-  p("%02x", c);
-}
-
-void print_bytes(uint8_t* p, uint8_t count) {
-  p += count;
+void print_bytes(uint8_t* pb, uint8_t count) {
+  pb += count;
   while (count--) {
-    print_byte(*--p);
+    p("%02x", *--pb);
   }
 }
 
@@ -215,12 +205,6 @@ class TAP {
     reached_xcomplete_(false) {
   }
 
-  void get_next_bytes_from_stream(uint8_t count) {
-    while (count--) {
-      *bp_++ = get_next_byte_from_stream();
-    }
-  }
-
   bool reached_xcomplete() { return reached_xcomplete_; }
 
   uint8_t read_next_instruction() {
@@ -277,24 +261,105 @@ class TAP {
     return instruction;
   }
 
+  bool handle_instruction(uint8_t instruction) {
+    bp_ = instruction_buffer_;
+
+    DEBUG("Handling %s", instruction_name(instruction));
+    switch (instruction) {
+      HANDLE(XCOMPLETE);
+      HANDLE(XTDOMASK);
+      HANDLE(XSIR);
+      HANDLE(XSDR);
+      HANDLE(XRUNTEST);
+      HANDLE(XREPEAT);
+      HANDLE(XSDRSIZE);
+      HANDLE(XSDRTDO);
+      HANDLE(XSTATE);
+      HANDLE(XWAIT);
+    default:
+      DEBUG("Got unknown instruction: %d", instruction);
+      return false;
+    }
+  }
+
  private:
-  Twiddler twiddler_;
-  int current_state_;
-  uint8_t sdrsize_bits_;
-  uint8_t sdrsize_bytes_;
-  uint8_t repeat_;
-  uint8_t runtest_;
-  bool reached_xcomplete_;
+  enum {
+    XCOMPLETE = 0,
+    XTDOMASK,
+    XSIR,
+    XSDR,
+    XRUNTEST,
+    XREPEAT = 7,
+    XSDRSIZE,
+    XSDRTDO,
+    XSETSDRMASKS,
+    XSDRINC,
+    XSDRB,
+    XSDRC,
+    XSDRE,
+    XSDRTDOB,
+    XSDRTDOC,
+    XSDRTDOE,
+    XSTATE,
+    XENDIR,
+    XENDDR,
+    XSIR2,
+    XCOMMENT,
+    XWAIT
+  };
+  const char *instruction_name(uint8_t instruction) {
+    switch (instruction) {
+      NAME_FOR(XCOMPLETE);
+      NAME_FOR(XTDOMASK);
+      NAME_FOR(XSIR);
+      NAME_FOR(XSDR);
+      NAME_FOR(XRUNTEST);
+      NAME_FOR(XREPEAT);
+      NAME_FOR(XSDRSIZE);
+      NAME_FOR(XSDRTDO);
+      NAME_FOR(XSETSDRMASKS);
+      NAME_FOR(XSDRINC);
+      NAME_FOR(XSDRB);
+      NAME_FOR(XSDRC);
+      NAME_FOR(XSDRE);
+      NAME_FOR(XSDRTDOB);
+      NAME_FOR(XSDRTDOC);
+      NAME_FOR(XSDRTDOE);
+      NAME_FOR(XSTATE);
+      NAME_FOR(XENDIR);
+      NAME_FOR(XENDDR);
+      NAME_FOR(XSIR2);
+      NAME_FOR(XCOMMENT);
+      NAME_FOR(XWAIT);
+    default:
+      return "XWTF";
+    }
+  }
 
   enum {
-    BUFFER_SIZE = 32
+    STATE_TLR,
+    STATE_RTI,
+    STATE_SELECT_DR_SCAN,
+    STATE_CAPTURE_DR,
+    STATE_SHIFT_DR,
+    STATE_EXIT1_DR,
+    STATE_PAUSE_DR,
+    STATE_EXIT2_DR,
+    STATE_UPDATE_DR,
+    STATE_SELECT_IR_SCAN,
+    STATE_CAPTURE_IR,
+    STATE_SHIFT_IR,
+    STATE_EXIT1_IR,
+    STATE_PAUSE_IR,
+    STATE_EXIT2_IR,
+    STATE_UPDATE_IR,
   };
-  uint8_t instruction_buffer_[BUFFER_SIZE];
-  uint8_t* bp_;
-  uint8_t tdi_[BUFFER_SIZE];
-  uint8_t tdo_[BUFFER_SIZE];
-  uint8_t tdomask_[BUFFER_SIZE];
-  uint8_t tdo_expected_[BUFFER_SIZE];
+
+  void get_next_bytes_from_stream(uint8_t count) {
+    while (count--) {
+      *bp_++ = get_next_byte_from_stream();
+    }
+  }
 
   uint8_t get_next_byte() {
     return *bp_++;
@@ -400,28 +465,6 @@ class TAP {
     return true;
   }
 
- public:
-  bool handle_instruction(uint8_t instruction) {
-    bp_ = instruction_buffer_;
-
-    DEBUG("Handling %s", instruction_name(instruction));
-    switch (instruction) {
-      HANDLE(XCOMPLETE);
-      HANDLE(XTDOMASK);
-      HANDLE(XSIR);
-      HANDLE(XSDR);
-      HANDLE(XRUNTEST);
-      HANDLE(XREPEAT);
-      HANDLE(XSDRSIZE);
-      HANDLE(XSDRTDO);
-      HANDLE(XSTATE);
-      HANDLE(XWAIT);
-    default:
-      DEBUG("Got unknown instruction: %d", instruction);
-      return false;
-    }
-  }
-
   void shift_td(uint8_t *data, uint16_t data_length_bits, bool is_end) {
     int byte_count = BYTE_COUNT(data_length_bits);
 
@@ -522,88 +565,24 @@ class TAP {
     }
   }
 
- private:
-  enum {
-    XCOMPLETE = 0,
-    XTDOMASK,
-    XSIR,
-    XSDR,
-    XRUNTEST,
-    XREPEAT = 7,
-    XSDRSIZE,
-    XSDRTDO,
-    XSETSDRMASKS,
-    XSDRINC,
-    XSDRB,
-    XSDRC,
-    XSDRE,
-    XSDRTDOB,
-    XSDRTDOC,
-    XSDRTDOE,
-    XSTATE,
-    XENDIR,
-    XENDDR,
-    XSIR2,
-    XCOMMENT,
-    XWAIT
-  };
-  const char *instruction_name(uint8_t instruction) {
-    switch (instruction) {
-      NAME_FOR(XCOMPLETE);
-      NAME_FOR(XTDOMASK);
-      NAME_FOR(XSIR);
-      NAME_FOR(XSDR);
-      NAME_FOR(XRUNTEST);
-      NAME_FOR(XREPEAT);
-      NAME_FOR(XSDRSIZE);
-      NAME_FOR(XSDRTDO);
-      NAME_FOR(XSETSDRMASKS);
-      NAME_FOR(XSDRINC);
-      NAME_FOR(XSDRB);
-      NAME_FOR(XSDRC);
-      NAME_FOR(XSDRE);
-      NAME_FOR(XSDRTDOB);
-      NAME_FOR(XSDRTDOC);
-      NAME_FOR(XSDRTDOE);
-      NAME_FOR(XSTATE);
-      NAME_FOR(XENDIR);
-      NAME_FOR(XENDDR);
-      NAME_FOR(XSIR2);
-      NAME_FOR(XCOMMENT);
-      NAME_FOR(XWAIT);
-    default:
-      return "XWTF";
-    }
-  }
+  Twiddler twiddler_;
+  int current_state_;
+  uint8_t sdrsize_bits_;
+  uint8_t sdrsize_bytes_;
+  uint8_t repeat_;
+  uint8_t runtest_;
+  bool reached_xcomplete_;
 
   enum {
-    STATE_TLR,
-    STATE_RTI,
-    STATE_SELECT_DR_SCAN,
-    STATE_CAPTURE_DR,
-    STATE_SHIFT_DR,
-    STATE_EXIT1_DR,
-    STATE_PAUSE_DR,
-    STATE_EXIT2_DR,
-    STATE_UPDATE_DR,
-    STATE_SELECT_IR_SCAN,
-    STATE_CAPTURE_IR,
-    STATE_SHIFT_IR,
-    STATE_EXIT1_IR,
-    STATE_PAUSE_IR,
-    STATE_EXIT2_IR,
-    STATE_UPDATE_IR,
+    BUFFER_SIZE = 32
   };
-
+  uint8_t instruction_buffer_[BUFFER_SIZE];
+  uint8_t* bp_;
+  uint8_t tdi_[BUFFER_SIZE];
+  uint8_t tdo_[BUFFER_SIZE];
+  uint8_t tdomask_[BUFFER_SIZE];
+  uint8_t tdo_expected_[BUFFER_SIZE];
 };
-
-void setup() {
-  pinMode(2, OUTPUT);
-  digitalWrite(2, LOW);
-
-  Serial.begin(57600);
-  READY("XSVF");
-}
 
 class RingBuffer {
  public:
@@ -665,6 +644,14 @@ uint8_t get_next_byte_from_stream() {
   xsvf_sum += c;
   ++xsvf_count;
   return c;
+}
+
+void setup() {
+  pinMode(2, OUTPUT);
+  digitalWrite(2, LOW);
+
+  Serial.begin(115200);
+  READY("XSVF");
 }
 
 void loop() {

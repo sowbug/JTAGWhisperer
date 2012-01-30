@@ -104,7 +104,7 @@ def main():
     sys.exit(2)
   xsvf_filename = args[0]
   port = None
-  bps = 57600
+  bps = 115200
 
   for o, a in opts:
     if o in ['-b', '--bps']:
