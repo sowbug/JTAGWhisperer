@@ -18,14 +18,24 @@ void p(const char *fmt, ... ) {
   Serial.print(tmp);
 }
 
-#define READY(fmt, ...)  { Serial.println("\n\n\n\nRXSVF"); }
+#define READY(arg)  { p("\n\nR%s\n", arg); }
+
+#define IMPORTANT(fmt, ...)  { Serial.print("! ");  \
+    p(fmt, ## __VA_ARGS__);                         \
+    Serial.println();                               \
+  }
 
 #if 1
 #define DEBUG(fmt, ...)  { }
+#define DEBUG_BYTES(s, p, n)  { }
 #else
 #define DEBUG(fmt, ...)  { Serial.print("D ");  \
     p(fmt, ## __VA_ARGS__);                     \
     Serial.println();                           \
+  }
+#define DEBUG_BYTES(s, p, n)  { Serial.print("D "); Serial.print(s);  \
+    print_bytes(p, n);                                                \
+    Serial.println();                                                 \
   }
 #endif
 
@@ -40,15 +50,10 @@ void print_bytes(uint8_t* p, uint8_t count) {
   }
 }
 
-#define DEBUG_BYTES(s, p, n)  { Serial.print("D "); Serial.print(s);  \
-    print_bytes(p, n);                                                \
-    Serial.println();                                                 \
-}
-
 #define QUIT(fmt, ...)  { Serial.print("Q ");   \
     p(fmt, ## __VA_ARGS__);                     \
     Serial.println();                           \
-}
+  }
 
 // Knows how to set MCU-specific pins in a JTAG-relevant way.
 class Twiddler {
@@ -65,7 +70,6 @@ class Twiddler {
   }
 
   inline void pulse_clock() {
-    register uint8_t portb = portb_;
     PORTB = portb_ & ~TCK;
     PORTB |= TCK;
   }
@@ -171,7 +175,17 @@ static const uint16_t tms_map[] = {
 #define HANDLE(x) case x: return handle_##x()
 #define NAME_FOR(x) case x: return #x;
 
+uint32_t instruction_count = 0;
+uint32_t xsvf_sum = 0;
+uint32_t xsvf_count = 0;
+
+void emit_final_status() {
+  IMPORTANT("Completed %d instructions.", instruction_count);
+  IMPORTANT("Checksum %lx/%lx.", xsvf_sum, xsvf_count);
+}
+
 void explode(const char* s) {
+  emit_final_status();
   QUIT("EXPLODED %s", s);
   while (true) {
   }
@@ -256,6 +270,7 @@ class TAP {
       get_next_bytes_from_stream(6);
       break;
     default:
+      IMPORTANT("Unexpected instruction %d", instruction);
       explode("unrecognized...");
       break;
     }
@@ -304,6 +319,7 @@ class TAP {
   }
 
   bool handle_XCOMPLETE() {
+    IMPORTANT("XCOMPLETE");
     reached_xcomplete_ = true;
     return false;
   }
@@ -317,11 +333,9 @@ class TAP {
   bool handle_XSIR() {
     uint8_t bits = get_next_byte();
     get_next_bytes(tdi_, BYTES(bits));
-    //DEBUG_BYTES("... sending ", tdi_, BYTES(bits));
     state_goto(STATE_SHIFT_IR);
     shift_td(tdi_, bits, true);
     state_goto(STATE_RTI);
-    DEBUG("..................");
     return true;
   }
 
@@ -346,7 +360,7 @@ class TAP {
   bool handle_XSDRSIZE() {
     sdrsize_bits_ = get_next_long();
     sdrsize_bytes_ = BYTES(sdrsize_bits_);
-    DEBUG("... sdrsize now %d", sdrsize_bytes_);
+    DEBUG("... sdrsize now %d/%d", sdrsize_bits_, sdrsize_bytes_);
     return true;
   }
 
@@ -453,7 +467,8 @@ class TAP {
         }
       }
     }
-    if (attempts_left == 0) {
+    if (should_check && !matched) {
+      explode("sdr check failed.");
       return false;
     }
     if (should_end) {
@@ -587,13 +602,69 @@ void setup() {
   digitalWrite(2, LOW);
 
   Serial.begin(57600);
-  READY();
+  READY("XSVF");
 }
 
-uint8_t get_next_byte_from_stream() {
-  while (Serial.available() <= 0) {
+class RingBuffer {
+ public:
+ RingBuffer()
+   : read_ptr_(buffer_), write_ptr_(buffer_) {
   }
-  return Serial.read();
+
+  uint8_t get() {
+    if (!available()) {
+      fill();
+    }
+    uint8_t next_byte = *read_ptr_++;
+    if (read_ptr_ == buffer_ + BUFFER_SIZE) {
+      read_ptr_ -= BUFFER_SIZE;
+    }
+    return next_byte;
+  }
+
+ private:
+  bool available() {
+    return read_ptr_ != write_ptr_;
+  }
+
+  void fill() {
+    load();
+    if (!available()) {
+      READY("SEND");
+      int delay_time = 5;
+      do {
+        delay(delay_time);
+        load();
+        delay_time = delay_time + delay_time;
+      } while (!available());
+    }
+  }
+
+  void load() {
+    while (Serial.available() > 0) {
+      uint8_t c = Serial.read();
+      *write_ptr_++ = c;
+      if (write_ptr_ == buffer_ + BUFFER_SIZE) {
+        write_ptr_ -= BUFFER_SIZE;
+      }
+      if (!available()) {
+        explode("Overran serial buffer");
+      }
+    }
+  }
+
+  enum { BUFFER_SIZE = 128 };
+  uint8_t buffer_[BUFFER_SIZE];
+  uint8_t* read_ptr_;
+  uint8_t* write_ptr_;
+};
+
+RingBuffer ring_buffer;
+uint8_t get_next_byte_from_stream() {
+  uint8_t c = ring_buffer.get();
+  xsvf_sum += c;
+  ++xsvf_count;
+  return c;
 }
 
 void loop() {
@@ -604,10 +675,13 @@ void loop() {
     uint8_t instruction = tap.read_next_instruction();
     if (!tap.handle_instruction(instruction)) {
       if (!tap.reached_xcomplete()) {
+        IMPORTANT("Failure at instruction #%d", instruction_count);
         fail();
       }
       break;
     }
+    ++instruction_count;
   }
+  emit_final_status();
   succeed();
 }

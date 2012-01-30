@@ -6,6 +6,7 @@
 # See LICENSE file for BSD-style licensing information.
 #
 
+import binascii
 import getopt
 import sys
 
@@ -17,19 +18,40 @@ You don't have pyserial installed. Please install it and try again.
 "easy_install pyserial" or "pip install pyserial" will probably work.
 """
 
-def write_xsvf(s, xsvf):
-  bytes_to_write = len(xsvf)
+total_bytes_sent = 0
+def send_xsvf_chunk(s, xsvf):
+  global total_bytes_sent
+  if len(xsvf) == 0:
+    print 'Problem: tried to send empty xsvf.'
+    return xsvf
+  chunk = xsvf[:32]
+  xsvf = xsvf[len(chunk):]
+  bytes_to_write = len(chunk)
   while bytes_to_write > 0:
-    bytes_written = s.write(xsvf)
-    xsvf = xsvf[bytes_written:]
+    bytes_written = s.write(chunk)
+    total_bytes_sent += bytes_written
+    chunk = chunk[bytes_written:]
     bytes_to_write -= bytes_written
+  print '\rSent: %8d bytes, %8d remaining' % (total_bytes_sent, len(xsvf)),
+  return xsvf
+
+def get_xsvf_checksum(xsvf):
+  xsvf_sum = 0
+  for c in xsvf:
+    xsvf_sum += ord(c)
+  return (xsvf_sum, len(xsvf))
 
 def program(xsvf_filename, port, bps):
+  global total_bytes_sent
+
   f = open(xsvf_filename, 'rb')
   xsvf = f.read()
   f.close()
+  print 'Ready to send file of size %d bytes.' % (len(xsvf))
 
-  s = serial.Serial(port=port, baudrate=bps, xonxoff=True)
+  (xsvf_sum, xsvf_len) = get_xsvf_checksum(xsvf)
+
+  s = serial.Serial(port=port, baudrate=bps, rtscts=True)
   s.flushInput()
   s.flushOutput()
 
@@ -45,20 +67,29 @@ def program(xsvf_filename, port, bps):
       if text == 'XSVF':
         if not is_device_ready:
           is_device_ready = True
-          print 'Sending file "%s" of length %d.' % (xsvf_filename, len(xsvf))
-          write_xsvf(s, xsvf)
+          print 'Device is ready.'
           continue
-      print 'Ignoring spurious ready:', text
+      elif text == 'SEND':
+        xsvf = send_xsvf_chunk(s, xsvf)
+        continue
+      else:
+        print 'Unrecognized ready command:', text
     elif command == 'Q':
+      print
       print 'Received device quit:', text
       break
     elif command == 'D':
+      print
       print 'Device:', text
+    elif command == '!':
+      print
+      print 'IMPORTANT:', text
     else:
+      print
       print 'Unrecognized line:', line
 
   s.close()
-
+  print 'Expected checksum: %lx/%lx.' % (xsvf_sum, xsvf_len)
   return 0
 
 def usage():
