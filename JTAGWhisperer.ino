@@ -20,12 +20,14 @@ void p(const char *fmt, ... ) {
 
 #define READY(fmt, ...)  { Serial.println("\n\n\n\nRXSVF"); }
 
+#if 1
 #define DEBUG(fmt, ...)  { }
-
-#define DEBUG_(fmt, ...)  { Serial.print("D ");  \
+#else
+#define DEBUG(fmt, ...)  { Serial.print("D ");  \
     p(fmt, ## __VA_ARGS__);                     \
     Serial.println();                           \
   }
+#endif
 
 void print_byte(uint8_t c) {
   p("%02x", c);
@@ -41,37 +43,40 @@ void print_bytes(uint8_t* p, uint8_t count) {
 #define DEBUG_BYTES(s, p, n)  { Serial.print("D "); Serial.print(s);  \
     print_bytes(p, n);                                                \
     Serial.println();                                                 \
-  }
+}
 
 #define QUIT(fmt, ...)  { Serial.print("Q ");   \
     p(fmt, ## __VA_ARGS__);                     \
     Serial.println();                           \
-  }
+}
 
 // Knows how to set MCU-specific pins in a JTAG-relevant way.
 class Twiddler {
  public:
- Twiddler() : portb_(0),
-    tdo_(0) {
+ Twiddler() : portb_(0), tdo_(0) {
     DDRB = TMS | TDI | TCK;
   }
 
   void pulse_clock_and_read_tdo() {
-    noInterrupts();
     tdo_ >>= 1;
     clr_port(TCK);
     set_port(TCK);
     tdo_ |= (PINB & TDO) ? 0x80 : 0;
-    interrupts();
+  }
+
+  inline void pulse_clock() {
+    register uint8_t portb = portb_;
+    PORTB = portb_ & ~TCK;
+    PORTB |= TCK;
   }
 
   void wait_time(unsigned long microsec) {
     unsigned long until = micros() + microsec;
     while (microsec--) {
-      pulse_clock_and_read_tdo();
+      pulse_clock();
     }
     while (micros() < until) {
-      pulse_clock_and_read_tdo();
+      pulse_clock();
     }
   }
 
@@ -107,12 +112,12 @@ class Twiddler {
     }
   }
 
-  void set_port(uint8_t pin) {
+  inline void set_port(uint8_t pin) {
     portb_ |= pin;
     write_portb_if_tck(pin);
   }
 
-  void clr_port(uint8_t pin) {
+  inline void clr_port(uint8_t pin) {
     portb_ &= ~pin;
     write_portb_if_tck(pin);
   }
@@ -166,8 +171,8 @@ static const uint16_t tms_map[] = {
 #define HANDLE(x) case x: return handle_##x()
 #define NAME_FOR(x) case x: return #x;
 
-void explode() {
-  QUIT("EXPLODED");
+void explode(const char* s) {
+  QUIT("EXPLODED %s", s);
   while (true) {
   }
 }
@@ -242,13 +247,16 @@ class TAP {
       get_next_bytes_from_stream(sdrsize_bytes_ + sdrsize_bytes_);
       break;
     case XSDRINC:
-      explode();
+      explode("unrecognized XSDRINC");
       break;
     case XSTATE:
       *bp_++ = get_next_byte_from_stream();
       break;
+    case XWAIT:
+      get_next_bytes_from_stream(6);
+      break;
     default:
-      explode();
+      explode("unrecognized...");
       break;
     }
     return instruction;
@@ -369,6 +377,15 @@ class TAP {
     return true;
   }
 
+  bool handle_XWAIT() {
+    state_goto(get_next_byte());
+    uint8_t end_state = get_next_byte();
+    uint32_t wait_time_usec = get_next_long();
+    wait_time(wait_time_usec);
+    state_goto(end_state);
+    return true;
+  }
+
  public:
   bool handle_instruction(uint8_t instruction) {
     bp_ = instruction_buffer_;
@@ -384,6 +401,7 @@ class TAP {
       HANDLE(XSDRSIZE);
       HANDLE(XSDRTDO);
       HANDLE(XSTATE);
+      HANDLE(XWAIT);
     default:
       DEBUG("Got unknown instruction: %d", instruction);
       return false;
@@ -430,7 +448,7 @@ class TAP {
           state_step(1); /* Exit1-DR state */
 
           state_goto(STATE_RTI);
-          wait_time();
+          wait_time(runtest_);
           state_goto(STATE_SHIFT_DR);
         }
       }
@@ -441,14 +459,13 @@ class TAP {
     if (should_end) {
       state_goto(STATE_RTI);
     }
-    wait_time();
+    wait_time(runtest_);
     return true;
   }
 
-  void wait_time() {
-    uint32_t microsec = runtest_;
-    uint32_t until = micros() + microsec;
-    while (microsec--) {
+  void wait_time(uint32_t microseconds) {
+    uint32_t until = micros() + microseconds;
+    while (microseconds--) {
       twiddler_.pulse_clock_and_read_tdo();
     }
     while (micros() < until) {
@@ -508,7 +525,12 @@ class TAP {
     XSDRTDOB,
     XSDRTDOC,
     XSDRTDOE,
-    XSTATE
+    XSTATE,
+    XENDIR,
+    XENDDR,
+    XSIR2,
+    XCOMMENT,
+    XWAIT
   };
   const char *instruction_name(uint8_t instruction) {
     switch (instruction) {
@@ -529,6 +551,11 @@ class TAP {
       NAME_FOR(XSDRTDOC);
       NAME_FOR(XSDRTDOE);
       NAME_FOR(XSTATE);
+      NAME_FOR(XENDIR);
+      NAME_FOR(XENDDR);
+      NAME_FOR(XSIR2);
+      NAME_FOR(XCOMMENT);
+      NAME_FOR(XWAIT);
     default:
       return "XWTF";
     }

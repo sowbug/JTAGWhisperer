@@ -7,8 +7,15 @@
 #
 
 import getopt
-import serial
 import sys
+
+try:
+  import serial
+except ImportError:
+  print """
+You don't have pyserial installed. Please install it and try again.
+"easy_install pyserial" or "pip install pyserial" will probably work.
+"""
 
 def write_xsvf(s, xsvf):
   bytes_to_write = len(xsvf)
@@ -23,6 +30,8 @@ def program(xsvf_filename, port, bps):
   f.close()
 
   s = serial.Serial(port=port, baudrate=bps, xonxoff=True)
+  s.flushInput()
+  s.flushOutput()
 
   is_device_ready = False
   while True:
@@ -53,24 +62,30 @@ def program(xsvf_filename, port, bps):
   return 0
 
 def usage():
-  print 'send_xsvf [-b bps] xsvf_filename /dev/your_arduino_serial_port'
+  print 'send_xsvf [-b bps] -p /dev/your_arduino_serial_port xsvf_filename'
 
 def main():
   try:
-    opts, args = getopt.getopt(sys.argv[1:], 'b:', ['bps='])
+    opts, args = getopt.getopt(sys.argv[1:], 'bp:', ['bps=', 'port='])
   except getopt.GetoptError, err:
     print str(err)
     usage()
     sys.exit(2)
   xsvf_filename = args[0]
-  port = args[1]
+  port = None
   bps = 57600
 
   for o, a in opts:
     if o in ['-b', '--bps']:
       bps = int(a)
+    elif o in ['-p', '--port']:
+      port = a
     else:
       assert False, 'unhandled option'
+
+  if port is None:
+    usage()
+    sys.exit(2)
 
   sys.exit(program(xsvf_filename, port, bps))
 
