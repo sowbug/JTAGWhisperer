@@ -33,6 +33,7 @@ def send_xsvf_chunk(s, xsvf):
     chunk = chunk[bytes_written:]
     bytes_to_write -= bytes_written
   print '\rSent: %8d bytes, %8d remaining' % (total_bytes_sent, len(xsvf)),
+  sys.stdout.flush()
   return xsvf
 
 def get_xsvf_checksum(xsvf):

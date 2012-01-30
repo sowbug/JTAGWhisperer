@@ -52,16 +52,16 @@ class Twiddler {
     DDRB = TMS | TDI | TCK;
   }
 
+  inline void pulse_clock() {
+    clr_port(TCK);
+    set_port(TCK);
+  }
+
   void pulse_clock_and_read_tdo() {
     tdo_ >>= 1;
     clr_port(TCK);
     set_port(TCK);
     tdo_ |= (PINB & TDO) ? 0x80 : 0;
-  }
-
-  inline void pulse_clock() {
-    PORTB = portb_ & ~TCK;
-    PORTB |= TCK;
   }
 
   void wait_time(unsigned long microsec) {
@@ -494,7 +494,7 @@ class TAP {
     int attempts_left = repeat_;
     bool matched = false;
     while (!matched && attempts_left-- > 0) {
-      shift_td(tdi_, sdrsize_bits_, false);
+      shift_td(tdi_, sdrsize_bits_, should_end);
       if (should_check) {
         if (is_tdo_as_expected()) {
           matched = true;
@@ -524,10 +524,10 @@ class TAP {
   void wait_time(uint32_t microseconds) {
     uint32_t until = micros() + microseconds;
     while (microseconds--) {
-      twiddler_.pulse_clock_and_read_tdo();
+      twiddler_.pulse_clock();
     }
     while (micros() < until) {
-      twiddler_.pulse_clock_and_read_tdo();
+      twiddler_.pulse_clock();
     }
   }
 
@@ -549,7 +549,7 @@ class TAP {
     } else {
       twiddler_.clr_tms();
     }
-    twiddler_.pulse_clock_and_read_tdo();
+    twiddler_.pulse_clock();
     state_ack(tms);
   }
 
