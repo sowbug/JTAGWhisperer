@@ -48,20 +48,22 @@ void print_bytes(uint8_t* pb, uint8_t count) {
 // Knows how to set MCU-specific pins in a JTAG-relevant way.
 class Twiddler {
  public:
- Twiddler() : portb_(0), tdo_(0) {
+ Twiddler() : portb_(0) {
     DDRB = TMS | TDI | TCK;
   }
 
   inline void pulse_clock() {
     clr_port(TCK);
+    delayMicroseconds(1);
     set_port(TCK);
   }
 
-  void pulse_clock_and_read_tdo() {
-    tdo_ >>= 1;
+  bool pulse_clock_and_read_tdo() {
     clr_port(TCK);
+    delayMicroseconds(1);
+    uint8_t pinb = PINB;
     set_port(TCK);
-    tdo_ |= (PINB & TDO) ? 0x80 : 0;
+    return pinb & TDO;
   }
 
   void wait_time(unsigned long microsec) {
@@ -90,8 +92,6 @@ class Twiddler {
     clr_port(TDI);
   }
 
-  uint8_t tdo() { return tdo_; }
-
  private:
   enum {
     TMS = _BV(PINB0),  // Arduino 8
@@ -118,11 +118,10 @@ class Twiddler {
 
   // The current PORTB state. We write this only when we twiddle TCK.
   uint8_t portb_;
-
-  // Shift register. Every time the clock pulses we shift a bit into this byte.
-  uint8_t tdo_;
 };
 
+// These tables and the code that uses them are taken from
+// https://github.com/ben0109/XSVF-Player/.
 static const uint8_t tms_transitions[] = {
   0x01, /* STATE_TLR    */
   0x21, /* STATE_RTI    */
@@ -289,7 +288,9 @@ class TAP {
     XSIR,
     XSDR,
     XRUNTEST,
-    XREPEAT = 7,
+    XRESERVED_5,
+    XRESERVED_6,
+    XREPEAT,
     XSDRSIZE,
     XSDRTDO,
     XSETSDRMASKS,
@@ -407,7 +408,7 @@ class TAP {
   bool handle_XSDR() {
     get_next_bytes(tdi_, sdrsize_bytes_);
     DEBUG_BYTES("... sending ", tdi_, sdrsize_bytes_);
-    return sdr(true, false);
+    return sdr(true, true, true);
   }
 
   bool handle_XRUNTEST() {
@@ -434,7 +435,7 @@ class TAP {
     get_next_bytes(tdo_expected_, sdrsize_bytes_);
     DEBUG_BYTES("... sending   ", tdi_, sdrsize_bytes_);
     DEBUG_BYTES("... expecting ", tdo_expected_, sdrsize_bytes_);
-    return sdr(true, false);
+    return sdr(true, true, true);
   }
 
   bool is_tdo_as_expected() {
@@ -470,40 +471,42 @@ class TAP {
 
     for (int i = 0; i < byte_count; ++i) {
       uint8_t byte_out = data[i];
-      for (int j = 0; j < 8; j++) {
-        if (data_length_bits == 1 && is_end) {
+      uint8_t tdo_byte = 0;
+      for (int j = 0; j < 8 && data_length_bits-- > 0; ++j) {
+        if (data_length_bits == 0 && is_end) {
           twiddler_.set_tms();
           state_ack(1);
         }
 
-        if (data_length_bits--) {
-          if (byte_out & 1) {
-            twiddler_.set_tdi();
-          } else {
-            twiddler_.clr_tdi();
-          }
-          byte_out >>= 1;
-          twiddler_.pulse_clock_and_read_tdo();
+        if (byte_out & 1) {
+          twiddler_.set_tdi();
+        } else {
+          twiddler_.clr_tdi();
         }
+        byte_out >>= 1;
+        bool tdo = twiddler_.pulse_clock_and_read_tdo();
+        tdo_byte |= tdo << j;
       }
-      tdo_[i] = twiddler_.tdo();
+      tdo_[i] = tdo_byte;
     }
   }
 
-  bool sdr(bool should_check, bool should_end) {
+  bool sdr(bool should_begin, bool should_end, bool should_check) {
     int attempts_left = repeat_;
     bool matched = false;
+
+    if (should_begin) {
+      state_goto(STATE_SHIFT_DR);
+    }
+
     while (!matched && attempts_left-- > 0) {
       shift_td(tdi_, sdrsize_bits_, should_end);
       if (should_check) {
         if (is_tdo_as_expected()) {
           matched = true;
         } else {
-          state_step(0); /* Pause-DR state */
-          state_step(1); /* Exit2-DR state */
-          state_step(0); /* Shift-DR state */
-          state_step(1); /* Exit1-DR state */
-
+          state_goto(STATE_PAUSE_DR);
+          state_goto(STATE_SHIFT_DR);
           state_goto(STATE_RTI);
           wait_time(runtest_);
           state_goto(STATE_SHIFT_DR);
@@ -522,6 +525,7 @@ class TAP {
   }
 
   void wait_time(uint32_t microseconds) {
+    DEBUG("Waiting %d microseconds...", microseconds);
     uint32_t until = micros() + microseconds;
     while (microseconds--) {
       twiddler_.pulse_clock();
@@ -566,11 +570,11 @@ class TAP {
   }
 
   Twiddler twiddler_;
-  int current_state_;
+  uint8_t current_state_;
   uint8_t sdrsize_bits_;
   uint8_t sdrsize_bytes_;
   uint8_t repeat_;
-  uint8_t runtest_;
+  uint32_t runtest_;
   bool reached_xcomplete_;
 
   enum {
