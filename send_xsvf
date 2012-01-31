@@ -19,8 +19,9 @@ You don't have pyserial installed. Please install it and try again.
 """
 
 total_bytes_sent = 0
+need_lf = False
 def send_xsvf_chunk(s, xsvf):
-  global total_bytes_sent
+  global total_bytes_sent, need_lf
   if len(xsvf) == 0:
     print 'Problem: tried to send empty xsvf.'
     return xsvf
@@ -33,6 +34,7 @@ def send_xsvf_chunk(s, xsvf):
     chunk = chunk[bytes_written:]
     bytes_to_write -= bytes_written
   print '\rSent: %8d bytes, %8d remaining' % (total_bytes_sent, len(xsvf)),
+  need_lf = True
   sys.stdout.flush()
   return xsvf
 
@@ -41,6 +43,12 @@ def get_xsvf_checksum(xsvf):
   for c in xsvf:
     xsvf_sum += ord(c)
   return (xsvf_sum, len(xsvf))
+
+def maybe_print_lf():
+  global need_lf
+  if need_lf:
+    need_lf = False
+    print
 
 def program(xsvf_filename, port, bps):
   global total_bytes_sent
@@ -76,17 +84,17 @@ def program(xsvf_filename, port, bps):
       else:
         print 'Unrecognized ready command:', text
     elif command == 'Q':
-      print
+      maybe_print_lf()
       print 'Received device quit:', text
       break
     elif command == 'D':
-      print
+      maybe_print_lf()
       print 'Device:', text
     elif command == '!':
-      print
+      maybe_print_lf()
       print 'IMPORTANT:', text
     else:
-      print
+      maybe_print_lf()
       print 'Unrecognized line:', line
 
   s.close()

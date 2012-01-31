@@ -355,6 +355,28 @@ class TAP {
     STATE_EXIT2_IR,
     STATE_UPDATE_IR,
   };
+  const char *state_name(uint8_t state) {
+    switch (state) {
+      NAME_FOR(STATE_TLR);
+      NAME_FOR(STATE_RTI);
+      NAME_FOR(STATE_SELECT_DR_SCAN);
+      NAME_FOR(STATE_CAPTURE_DR);
+      NAME_FOR(STATE_SHIFT_DR);
+      NAME_FOR(STATE_EXIT1_DR);
+      NAME_FOR(STATE_PAUSE_DR);
+      NAME_FOR(STATE_EXIT2_DR);
+      NAME_FOR(STATE_UPDATE_DR);
+      NAME_FOR(STATE_SELECT_IR_SCAN);
+      NAME_FOR(STATE_CAPTURE_IR);
+      NAME_FOR(STATE_SHIFT_IR);
+      NAME_FOR(STATE_EXIT1_IR);
+      NAME_FOR(STATE_PAUSE_IR);
+      NAME_FOR(STATE_EXIT2_IR);
+      NAME_FOR(STATE_UPDATE_IR);
+    default:
+      return "STATE_WTF";
+    }
+  }
 
   void get_next_bytes_from_stream(uint8_t count) {
     while (count--) {
@@ -413,7 +435,7 @@ class TAP {
 
   bool handle_XRUNTEST() {
     runtest_ = get_next_long();
-    DEBUG("... runtest now %x", runtest_);
+    DEBUG("... runtest now %ld", runtest_);
     return true;
   }
 
@@ -525,7 +547,7 @@ class TAP {
   }
 
   void wait_time(uint32_t microseconds) {
-    DEBUG("Waiting %d microseconds...", microseconds);
+    DEBUG("Waiting %ld microseconds...", microseconds);
     uint32_t until = micros() + microseconds;
     while (microseconds--) {
       twiddler_.pulse_clock();
@@ -536,6 +558,9 @@ class TAP {
   }
 
   void set_state(int state) {
+    if (current_state_ != state) {
+      DEBUG("Switching to state %s.", state_name(state));
+    }
     current_state_ = state;
   }
 
