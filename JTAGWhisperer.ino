@@ -19,10 +19,14 @@ void p(const char *fmt, ... ) {
     Serial.println();                               \
   }
 
-#if 1
-#define DEBUG(fmt, ...)  { }
-#define DEBUG_BYTES(s, p, n)  { }
+#if 0
+#define DEBUG_STATE(s) { Serial.print("D State -> "); \
+    Serial.print(state_name(s)); }
 #else
+#define DEBUG_STATE(s) {}
+#endif
+
+#if 0
 #define DEBUG(fmt, ...)  { Serial.print("D ");  \
     p(fmt, ## __VA_ARGS__);                     \
     Serial.println();                           \
@@ -31,12 +35,14 @@ void p(const char *fmt, ... ) {
     print_bytes(p, n);                                                \
     Serial.println();                                                 \
   }
+#else
+#define DEBUG(fmt, ...)  { }
+#define DEBUG_BYTES(s, p, n)  { }
 #endif
 
 void print_bytes(uint8_t* pb, uint8_t count) {
-  pb += count;
   while (count--) {
-    p("%02x", *--pb);
+    p("%02x", *pb++);
   }
 }
 
@@ -400,9 +406,8 @@ class TAP {
   }
 
   void get_next_bytes(uint8_t* data, uint8_t count) {
-    data += count;
     while (count--) {
-      *--data = get_next_byte();
+      *data++ = get_next_byte();
     }
   }
 
@@ -492,7 +497,7 @@ class TAP {
     int byte_count = BYTE_COUNT(data_length_bits);
 
     for (int i = 0; i < byte_count; ++i) {
-      uint8_t byte_out = data[i];
+      uint8_t byte_out = data[byte_count - 1 - i];
       uint8_t tdo_byte = 0;
       for (int j = 0; j < 8 && data_length_bits-- > 0; ++j) {
         if (data_length_bits == 0 && is_end) {
@@ -509,7 +514,7 @@ class TAP {
         bool tdo = twiddler_.pulse_clock_and_read_tdo();
         tdo_byte |= tdo << j;
       }
-      tdo_[i] = tdo_byte;
+      tdo_[byte_count - 1 - i] = tdo_byte;
     }
   }
 
@@ -559,7 +564,7 @@ class TAP {
 
   void set_state(int state) {
     if (current_state_ != state) {
-      DEBUG("Switching to state %s.", state_name(state));
+      DEBUG_STATE(state);
     }
     current_state_ = state;
   }
