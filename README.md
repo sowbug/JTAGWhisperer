@@ -1,30 +1,31 @@
 The JTAG Whisperer
 ==================
 
-A crude attempt at teaching an Arduino to send JTAG commands in XSVF files.
+A preliminary attempt at teaching an Arduino to send JTAG commands in XSVF files.
 
 Instructions
 ============
 
-First of all, don't get your hopes up; it doesn't work yet. Now that that's out of the way... Set up your Arduino by downloading the sketch to it. Then hook up your target's JTAG pins as follows:
+Don't get your hopes up; it doesn't work yet. Now that that's out of the way...
+
+Get a Xilinx XC9572XL CPLD. Set up your Arduino by downloading the sketch to it. Then hook up your CPLD's JTAG pins as follows:
 
 *  Pin 8 to TMS.
 *  Pin 9 to TDI.
 *  Pin 10 to TDO.
 *  Pin 11 to TCK.
 
-Do whatever you need to do to power the device. Try asking it its device ID as follows:
+Do whatever you need to do to power the CPLD (note that it's a 3.3-volt device!). Try asking it its device ID as follows, from the root of the source directory:
 
-`send_xsvf XC9572XL/DeviceID.xsvf /dev/tty.wherever_your_arduino_is`
+`./send_xsvf -p /dev/tty.your_arduino_serial_port XC9572XL/DeviceID.xsvf`
 
-You should see a back-and-forth that ends up displaying your target's device ID. Although the DeviceID.xsvf file was generated with the XC9572XL in mind, it ought to fail in a meaningful way (noting that the returned ID doesn't match) with another device, which will at least show that the sketch and script are working.
+You should see a back-and-forth that ends up with a "Success" message. If you rebuild the sketch with the DEBUG messages enabled, you'll see the actual device ID that's reported.
 
-Generate your own XSVF files using Xilinx iMPACT.
+Generate your own XSVF files using Xilinx iMPACT. You'll discover that programming your device probably doesn't work (yet).
 
 Credits
 =======
 
 By [Mike Tsao](http://www.sowbug.com/). Project on [GitHub](https://github.com/sowbug/JTAGWhisperer/).
 
-Many thanks to [Ben](https://github.com/ben0109/XSVF-Player/), who adapted the
-Xilinx XAPP058 code into something comprehensible.
+Many thanks to [Ben](https://github.com/ben0109/XSVF-Player/), who adapted the Xilinx XAPP058 code into something comprehensible. This code evolved from his project.
