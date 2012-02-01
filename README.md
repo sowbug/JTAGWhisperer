@@ -24,6 +24,14 @@ Instructions
 
 1. You should see a back-and-forth that ends up with a "Success" message. If you rebuild the sketch with the DEBUG messages enabled in SerialComm.h, you'll see the actual device ID that's reported.
 
+1. Now you're ready to write data to your CPLD. Execute either of these:
+
+`./send_xsvf -p /dev/tty.your_arduino_serial_port xsvf/XC9572XL/ProgramButtonLED.xsvf`
+
+`./send_xsvf -p /dev/tty.your_arduino_serial_port xsvf/XC9572XL/AlternateLEDsOnButton.xsvf`
+
+The first one blinks D1 when you press the button. The second one alternates between D1 and D2 when you hold down the button.
+
 Generate your own XSVF files using Xilinx iMPACT, or download them from the web. Just make sure they're for your device.
 
 Credits
@@ -32,3 +40,5 @@ Credits
 By [Mike Tsao](http://www.sowbug.com/). Project on [GitHub](https://github.com/sowbug/JTAGWhisperer/).
 
 Many thanks to [Ben](https://github.com/ben0109/XSVF-Player/), who adapted the Xilinx XAPP058 code into something comprehensible. This code evolved from his project, and all the clever parts are his.
+
+The guys over at [Dangerous Prototypes](http://dangerousprototypes.com/) sell an XC9572XL breakout board. It's cheap, it's open-source hardware, and their Bus Pirate tool will also program CPLDs. The "AlternateLEDsOnButton" XSVF is taken directly from their CPLD tutorials. DP are the guys who got me into CPLDs in the first place. Check them out and buy their stuff!
