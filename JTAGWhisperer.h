@@ -1,130 +1,22 @@
+/*
+  The JTAG Whisperer: An Arduino library for JTAG.
+
+  By Mike Tsao <http://github.com/sowbug>.
+
+  Copyright © 2012 Mike Tsao. Use, modification, and distribution are
+  subject to the BSD-style license as described in the accompanying
+  LICENSE file.
+
+  See README for complete attributions.
+*/
+
+#ifndef INCLUDE_JTAG_WHISPERER_JTAG_WHISPERER_H
+#define INCLUDE_JTAG_WHISPERER_JTAG_WHISPERER_H
+
+#include <BitTwiddler.h>
+#include <SerialComm.h>
+#include <Utilities.h>
 #include <avr/io.h>
-#include <stdio.h>
-
-#define BYTE_COUNT(bit_count) ((int)((bit_count + 7) >> 3))
-
-void p(const char *fmt, ... ) {
-  char tmp[128];
-  va_list args;
-  va_start(args, fmt);
-  vsnprintf(tmp, 128, fmt, args);
-  va_end(args);
-  Serial.print(tmp);
-}
-
-#define READY(arg)  { p("\n\nR%s\n", arg); }
-
-#define IMPORTANT(fmt, ...)  { Serial.print("! ");  \
-    p(fmt, ## __VA_ARGS__);                         \
-    Serial.println();                               \
-  }
-
-#if 0
-#define DEBUG_STATE(s) { Serial.print("D State -> "); \
-    Serial.print(state_name(s)); }
-#else
-#define DEBUG_STATE(s) {}
-#endif
-
-#if 0
-#define DEBUG(fmt, ...)  { Serial.print("D ");  \
-    p(fmt, ## __VA_ARGS__);                     \
-    Serial.println();                           \
-  }
-#define DEBUG_BYTES(s, p, n)  { Serial.print("D "); Serial.print(s);  \
-    print_bytes(p, n);                                                \
-    Serial.println();                                                 \
-  }
-#else
-#define DEBUG(fmt, ...)  { }
-#define DEBUG_BYTES(s, p, n)  { }
-#endif
-
-void print_bytes(uint8_t* pb, uint8_t count) {
-  while (count--) {
-    p("%02x", *pb++);
-  }
-}
-
-#define QUIT(fmt, ...)  { Serial.print("Q ");   \
-    p(fmt, ## __VA_ARGS__);                     \
-    Serial.println();                           \
-  }
-
-// Knows how to set MCU-specific pins in a JTAG-relevant way.
-class Twiddler {
- public:
- Twiddler() : portb_(0) {
-    DDRB = TMS | TDI | TCK;
-  }
-
-  inline void pulse_clock() {
-    clr_port(TCK);
-    delayMicroseconds(1);
-    set_port(TCK);
-  }
-
-  bool pulse_clock_and_read_tdo() {
-    clr_port(TCK);
-    delayMicroseconds(1);
-    uint8_t pinb = PINB;
-    set_port(TCK);
-    return pinb & TDO;
-  }
-
-  void wait_time(unsigned long microsec) {
-    unsigned long until = micros() + microsec;
-    while (microsec--) {
-      pulse_clock();
-    }
-    while (micros() < until) {
-      pulse_clock();
-    }
-  }
-
-  void set_tms() {
-    set_port(TMS);
-  }
-
-  void clr_tms() {
-    clr_port(TMS);
-  }
-
-  void set_tdi() {
-    set_port(TDI);
-  }
-
-  void clr_tdi() {
-    clr_port(TDI);
-  }
-
- private:
-  enum {
-    TMS = _BV(PINB0),  // Arduino 8
-    TDI = _BV(PINB1),  // Arduino 9
-    TDO = _BV(PINB2),  // Arduino 10
-    TCK = _BV(PINB3)   // Arduino 11
-  };
-
-  inline void write_portb_if_tck(uint8_t pin) {
-    if (pin == TCK) {
-      PORTB = portb_;
-    }
-  }
-
-  inline void set_port(uint8_t pin) {
-    portb_ |= pin;
-    write_portb_if_tck(pin);
-  }
-
-  inline void clr_port(uint8_t pin) {
-    portb_ &= ~pin;
-    write_portb_if_tck(pin);
-  }
-
-  // The current PORTB state. We write this only when we twiddle TCK.
-  uint8_t portb_;
-};
 
 // These tables and the code that uses them are taken from
 // https://github.com/ben0109/XSVF-Player/.
@@ -166,42 +58,11 @@ static const uint16_t tms_map[] = {
   0x7ffd, /* STATE_UPDATE_IR  */
 };
 
-#define BYTES(bits) ((int)((bits + 7) >> 3))
-#define HANDLE(x) case x: return handle_##x()
-#define NAME_FOR(x) case x: return #x;
-
-uint32_t instruction_count = 0;
-uint32_t xsvf_sum = 0;
-uint32_t xsvf_count = 0;
-
-void emit_final_status() {
-  IMPORTANT("Completed %d instructions.", instruction_count);
-  IMPORTANT("Checksum %lx/%lx.", xsvf_sum, xsvf_count);
-}
-
-void explode(const char* s) {
-  emit_final_status();
-  QUIT("EXPLODED %s", s);
-  while (true) {
-  }
-}
-
-void succeed() {
-  QUIT("SUCCESS");
-  while (true) {
-  }
-}
-
-void fail() {
-  QUIT("FAIL");
-  while (true) {
-  }
-}
-
-class TAP {
+class JTAGWhisperer {
  public:
- TAP(Twiddler& twiddler)
-   : twiddler_(twiddler),
+ JTAGWhisperer(SerialComm& serial_comm, BitTwiddler& twiddler)
+   : serial_comm_(serial_comm),
+    twiddler_(twiddler),
     current_state_(-1),
     sdrsize_bits_(0),
     sdrsize_bytes_(0),
@@ -214,7 +75,7 @@ class TAP {
 
   uint8_t read_next_instruction() {
     bp_ = instruction_buffer_;
-    uint8_t instruction = get_next_byte_from_stream();
+    uint8_t instruction = serial_comm_.GetNextByte();
     switch (instruction) {
     case XCOMPLETE:
       break;
@@ -222,7 +83,7 @@ class TAP {
       get_next_bytes_from_stream(sdrsize_bytes_);
       break;
     case XSIR: {
-      uint8_t length = get_next_byte_from_stream();
+      uint8_t length = serial_comm_.GetNextByte();
       *bp_++ = length;
       get_next_bytes_from_stream(BYTES(length));
       break;
@@ -237,7 +98,7 @@ class TAP {
       get_next_bytes_from_stream(4);
       break;
     case XREPEAT:
-      *bp_++ = get_next_byte_from_stream();
+      *bp_++ = serial_comm_.GetNextByte();
       break;
     case XSDRSIZE:
       get_next_bytes_from_stream(4);
@@ -249,18 +110,15 @@ class TAP {
     case XSETSDRMASKS:
       get_next_bytes_from_stream(sdrsize_bytes_ + sdrsize_bytes_);
       break;
-    case XSDRINC:
-      explode("unrecognized XSDRINC");
-      break;
     case XSTATE:
-      *bp_++ = get_next_byte_from_stream();
+      *bp_++ = serial_comm_.GetNextByte();
       break;
     case XWAIT:
       get_next_bytes_from_stream(6);
       break;
+    case XSDRINC:
     default:
-      IMPORTANT("Unexpected instruction %d", instruction);
-      explode("unrecognized...");
+      serial_comm_.Important("Unexpected instruction %d", instruction);
       break;
     }
     return instruction;
@@ -269,7 +127,7 @@ class TAP {
   bool handle_instruction(uint8_t instruction) {
     bp_ = instruction_buffer_;
 
-    DEBUG("Handling %s", instruction_name(instruction));
+    serial_comm_.Debug("Handling %s", instruction_name(instruction));
     switch (instruction) {
       HANDLE(XCOMPLETE);
       HANDLE(XTDOMASK);
@@ -282,7 +140,7 @@ class TAP {
       HANDLE(XSTATE);
       HANDLE(XWAIT);
     default:
-      DEBUG("Got unknown instruction: %d", instruction);
+      serial_comm_.Debug("Unimplemented instruction: %d", instruction);
       return false;
     }
   }
@@ -386,7 +244,7 @@ class TAP {
 
   void get_next_bytes_from_stream(uint8_t count) {
     while (count--) {
-      *bp_++ = get_next_byte_from_stream();
+      *bp_++ = serial_comm_.GetNextByte();
     }
   }
 
@@ -412,14 +270,14 @@ class TAP {
   }
 
   bool handle_XCOMPLETE() {
-    IMPORTANT("XCOMPLETE");
+    serial_comm_.Important("XCOMPLETE");
     reached_xcomplete_ = true;
     return false;
   }
 
   bool handle_XTDOMASK() {
     get_next_bytes(tdomask_, sdrsize_bytes_);
-    DEBUG_BYTES("... tdomask now ", tdomask_, sdrsize_bytes_);
+    serial_comm_.DebugBytes("... tdomask now ", tdomask_, sdrsize_bytes_);
     return true;
   }
 
@@ -434,48 +292,48 @@ class TAP {
 
   bool handle_XSDR() {
     get_next_bytes(tdi_, sdrsize_bytes_);
-    DEBUG_BYTES("... sending ", tdi_, sdrsize_bytes_);
+    serial_comm_.DebugBytes("... sending ", tdi_, sdrsize_bytes_);
     return sdr(true, true, true);
   }
 
   bool handle_XRUNTEST() {
     runtest_ = get_next_long();
-    DEBUG("... runtest now %ld", runtest_);
+    serial_comm_.Debug("... runtest now %ld", runtest_);
     return true;
   }
 
   bool handle_XREPEAT() {
     repeat_ = get_next_byte();
-    DEBUG("... repeat now %d", repeat_);
+    serial_comm_.Debug("... repeat now %d", repeat_);
     return true;
   }
 
   bool handle_XSDRSIZE() {
     sdrsize_bits_ = get_next_long();
     sdrsize_bytes_ = BYTES(sdrsize_bits_);
-    DEBUG("... sdrsize now %d/%d", sdrsize_bits_, sdrsize_bytes_);
+    serial_comm_.Debug("... sdrsize now %d/%d", sdrsize_bits_, sdrsize_bytes_);
     return true;
   }
 
   bool handle_XSDRTDO() {
     get_next_bytes(tdi_, sdrsize_bytes_);
     get_next_bytes(tdo_expected_, sdrsize_bytes_);
-    DEBUG_BYTES("... sending   ", tdi_, sdrsize_bytes_);
-    DEBUG_BYTES("... expecting ", tdo_expected_, sdrsize_bytes_);
+    serial_comm_.DebugBytes("... sending   ", tdi_, sdrsize_bytes_);
+    serial_comm_.DebugBytes("... expecting ", tdo_expected_, sdrsize_bytes_);
     return sdr(true, true, true);
   }
 
   bool is_tdo_as_expected() {
-    DEBUG_BYTES("... received  ", tdo_, sdrsize_bytes_);
+    serial_comm_.DebugBytes("... received  ", tdo_, sdrsize_bytes_);
     for (int i = 0; i < sdrsize_bytes_; ++i) {
       uint8_t expected = tdo_expected_[i] & tdomask_[i];
       uint8_t actual = tdo_[i] & tdomask_[i];
       if (expected != actual) {
-        DEBUG("... NO MATCH.");
+        serial_comm_.Debug("... NO MATCH.");
         return false;
       }
     }
-    DEBUG("... match!");
+    serial_comm_.Debug("... match!");
     return true;
   }
 
@@ -541,7 +399,7 @@ class TAP {
       }
     }
     if (should_check && !matched) {
-      explode("sdr check failed.");
+      serial_comm_.Important("SDR check failed.");
       return false;
     }
     if (should_end) {
@@ -552,7 +410,7 @@ class TAP {
   }
 
   void wait_time(uint32_t microseconds) {
-    DEBUG("Waiting %ld microseconds...", microseconds);
+    serial_comm_.Debug("Waiting %ld microseconds...", microseconds);
     uint32_t until = micros() + microseconds;
     while (microseconds--) {
       twiddler_.pulse_clock();
@@ -563,9 +421,6 @@ class TAP {
   }
 
   void set_state(int state) {
-    if (current_state_ != state) {
-      DEBUG_STATE(state);
-    }
     current_state_ = state;
   }
 
@@ -599,7 +454,8 @@ class TAP {
     }
   }
 
-  Twiddler twiddler_;
+  SerialComm serial_comm_;
+  BitTwiddler twiddler_;
   uint8_t current_state_;
   uint8_t sdrsize_bits_;
   uint8_t sdrsize_bytes_;
@@ -618,91 +474,4 @@ class TAP {
   uint8_t tdo_expected_[BUFFER_SIZE];
 };
 
-class RingBuffer {
- public:
- RingBuffer()
-   : read_ptr_(buffer_), write_ptr_(buffer_) {
-  }
-
-  uint8_t get() {
-    if (!available()) {
-      fill();
-    }
-    uint8_t next_byte = *read_ptr_++;
-    if (read_ptr_ == buffer_ + BUFFER_SIZE) {
-      read_ptr_ -= BUFFER_SIZE;
-    }
-    return next_byte;
-  }
-
- private:
-  bool available() {
-    return read_ptr_ != write_ptr_;
-  }
-
-  void fill() {
-    load();
-    if (!available()) {
-      READY("SEND");
-      int delay_time = 5;
-      do {
-        delay(delay_time);
-        load();
-        delay_time = delay_time + delay_time;
-      } while (!available());
-    }
-  }
-
-  void load() {
-    while (Serial.available() > 0) {
-      uint8_t c = Serial.read();
-      *write_ptr_++ = c;
-      if (write_ptr_ == buffer_ + BUFFER_SIZE) {
-        write_ptr_ -= BUFFER_SIZE;
-      }
-      if (!available()) {
-        explode("Overran serial buffer");
-      }
-    }
-  }
-
-  enum { BUFFER_SIZE = 128 };
-  uint8_t buffer_[BUFFER_SIZE];
-  uint8_t* read_ptr_;
-  uint8_t* write_ptr_;
-};
-
-RingBuffer ring_buffer;
-uint8_t get_next_byte_from_stream() {
-  uint8_t c = ring_buffer.get();
-  xsvf_sum += c;
-  ++xsvf_count;
-  return c;
-}
-
-void setup() {
-  pinMode(2, OUTPUT);
-  digitalWrite(2, LOW);
-
-  Serial.begin(115200);
-  READY("XSVF");
-}
-
-void loop() {
-  Twiddler twiddler;
-  TAP tap(twiddler);
-
-  while (true) {
-    uint8_t instruction = tap.read_next_instruction();
-    if (!tap.handle_instruction(instruction)) {
-      if (!tap.reached_xcomplete()) {
-        IMPORTANT("Failure at instruction #%d", instruction_count);
-        fail();
-      }
-      break;
-    }
-    ++instruction_count;
-  }
-  emit_final_status();
-  succeed();
-}
+#endif  // INCLUDE_JTAG_WHISPERER_JTAG_WHISPERER_H
