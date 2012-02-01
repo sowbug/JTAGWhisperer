@@ -6,6 +6,8 @@ With this library, your Arduino is an XSVF player. Use it to program CPLDs and F
 Instructions
 ============
 
+You'll need Python on your desktop, as well as the Python library pyserial (try `easy_install pyserial` or `pip install pyserial` to get it). You'll also need a target JTAG-speaking board of some kind, an Arduino, and four jumpers to connect four of the Arduino pins to your target board's JTAG headers.
+
 1. Find your Arduino IDE's sketches directory. This is the directory where you keep your own sketches.
 
 1. If there isn't already one, create a `libraries` directory inside the sketches directory.
