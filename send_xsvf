@@ -7,6 +7,7 @@
 #
 
 import binascii
+from time import time
 import getopt
 import sys
 
@@ -52,6 +53,7 @@ def maybe_print_lf():
 
 def program(xsvf_filename, port, bps):
   global total_bytes_sent
+  start_time = 0
 
   f = open(xsvf_filename, 'rb')
   xsvf = f.read()
@@ -77,6 +79,7 @@ def program(xsvf_filename, port, bps):
         if not is_device_ready:
           is_device_ready = True
           print 'Device is ready.'
+          start_time = time()
           continue
       elif text == 'SEND':
         xsvf = send_xsvf_chunk(s, xsvf)
@@ -99,6 +102,8 @@ def program(xsvf_filename, port, bps):
 
   s.close()
   print 'Expected checksum: %lx/%lx.' % (xsvf_sum, xsvf_len)
+  if start_time > 0:
+    print 'Elapsed time: %.02f seconds.' % (time() - start_time)
   return 0
 
 def usage():
