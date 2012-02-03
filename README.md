@@ -20,7 +20,7 @@ You'll need Python on your desktop, as well as the Python library pyserial (try 
 
 1. Get a Xilinx XC9572XL CPLD. Hook up your CPLD's JTAG pins to the Arduino: pins 8, 9, 10, 11 to TMS, TDI, TDO, and TCK, respectively. (If you have TCK on pin 11, you probably did it right.) On an Arduino MEGA or MEGA2560, use pins 53, 52, 51, 50 accordingly.
 
-1. Apply power to the CPLD (note that it's a 3.3-volt device!). Do not forget so set VIO to 3.3V. Try asking it its device ID as follows, from the root of the source directory:
+1. Apply power to the CPLD (note that it's a 3.3-volt device!). Do not forget to set VIO to 3.3V. Try asking it its device ID as follows, from the root of the source directory:
 
 `./send_xsvf -p /dev/tty.your_arduino_serial_port xsvf/XC9572XL/DeviceID.xsvf`
 
