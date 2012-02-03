@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 #
 # The JTAG Whisperer https://github.com/sowbug/JTAGWhisperer
 # Copyright 2012 Mike Tsao http://www.sowbug.com/
