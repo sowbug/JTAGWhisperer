@@ -3,6 +3,11 @@ The JTAG Whisperer
 
 With this library, your Arduino is an XSVF player. Use it to program CPLDs and FPGAs!
 
+Warning
+=======
+
+**Most Arduinos are 5-volt devices. Many JTAG devices are not 5-volt devices and will die if they get anywhere near 5 volts. Be sure your device is 5-volt tolerant or that you use an appropriate buffer for the I/O lines!**
+
 Instructions
 ============
 
@@ -18,9 +23,9 @@ You'll need Python on your desktop, as well as the Python library pyserial (try 
 
 1. Open the example JTAGWhisperer sketch. Upload it to your Arduino.
 
-1. Get a Xilinx XC9572XL CPLD. Hook up your CPLD's JTAG pins to the Arduino: pins 8, 9, 10, 11 to TMS, TDI, TDO, and TCK, respectively. (If you have TCK on pin 11, you probably did it right.) On an Arduino MEGA or MEGA2560, use pins 53, 52, 51, 50 accordingly.
+1. Get a Xilinx XC9572XL CPLD. Hook up your CPLD's JTAG pins to the Arduino: pins 8, 9, 10, 11 to TMS, TDI, TDO, and TCK, respectively. (If you have TCK on pin 11, you probably did it right.) On an Arduino MEGA or MEGA2560, use pins 53, 52, 51, 50 accordingly. **Re-read the warning above about I/O voltage. You just hooked up 5-volt I/O to your device, and that might let out the magic smoke!**
 
-1. Apply power to the CPLD (note that it's a 3.3-volt device!). Do not forget to set VIO to 3.3V. Try asking it its device ID as follows, from the root of the source directory:
+1. Apply power to the CPLD (note that the XC9500XL series are 3.3-volt devices!). Do not forget to set the '9572 VIO to 3.3V. Try asking it its device ID as follows, from the root of the source directory:
 
 `./send_xsvf -p /dev/tty.your_arduino_serial_port xsvf/XC9572XL/DeviceID.xsvf`
 
